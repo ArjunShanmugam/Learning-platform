@@ -1,0 +1,27 @@
+fastapi
+uvicorn[standard]
+sqlalchemy
+pymysql
+python-dotenv
+passlib[bcrypt]
+python-jose[cryptography]
+pydantic[email]
+pydantic-settings
+alembic
+python-multipart
+python-dateutil
+pyjwt
+redis
+weaviate-client
+python-json-logger
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch
+sentence-transformers
+faiss-cpu
+numpy
+scikit-learn
+pandas
+lightgbm
+joblib
+apscheduler
+prometheus-client

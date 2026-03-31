@@ -1,0 +1,184 @@
+services:
+  # MySQL Database
+  mysql:
+    image: mysql:8.0
+    container_name: learning_platform_mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:-root123}
+      MYSQL_DATABASE: ${DB_NAME:-learning}
+      MYSQL_USER: ${DB_USER:-learning_user}
+      MYSQL_PASSWORD: ${DB_PASSWORD:-learning_pass}
+    ports:
+      - "${DB_PORT:-3307}:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+    networks:
+      - learning_network
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-proot123"]
+      timeout: 20s
+      retries: 10
+      interval: 10s
+    restart: unless-stopped
+
+  # Redis Cache
+  redis:
+    image: redis:7-alpine
+    container_name: learning_platform_redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - learning_network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      timeout: 3s
+      retries: 5
+      interval: 5s
+    restart: unless-stopped
+
+  # Weaviate Vector Database
+  weaviate:
+    image: semitechnologies/weaviate:1.24.0
+    container_name: learning_platform_weaviate
+    ports:
+      - "8080:8080"
+      - "50051:50051"
+    environment:
+      QUERY_DEFAULTS_LIMIT: 25
+      AUTHENTICATION_ANONYMOUS_ACCESS_ENABLED: 'true'
+      PERSISTENCE_DATA_PATH: '/var/lib/weaviate'
+      DEFAULT_VECTORIZER_MODULE: 'text2vec-transformers'
+      ENABLE_MODULES: 'text2vec-transformers,generative-openai'
+      TRANSFORMERS_INFERENCE_API: "http://t2v-transformers:8080"
+    volumes:
+      - weaviate_data:/var/lib/weaviate
+    networks:
+      - learning_network
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8080/v1/.well-known/ready"]
+      timeout: 5s
+      retries: 5
+      interval: 5s
+    restart: unless-stopped
+
+  # Transformers inference for embeddings
+  t2v-transformers:
+    image: semitechnologies/transformers-inference:sentence-transformers-all-MiniLM-L6-v2
+    container_name: learning_platform_transformers
+    environment:
+      ENABLE_CUDA: 'false'
+    networks:
+      - learning_network
+    restart: unless-stopped
+
+  # Backend API
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: learning_platform_backend
+    environment:
+      DB_USER: ${DB_USER:-learning_user}
+      DB_PASSWORD: ${DB_PASSWORD:-learning_pass}
+      DB_HOST: mysql
+      DB_PORT: 3306
+      DB_NAME: ${DB_NAME:-learning}
+      REDIS_URL: redis://redis:6379
+      WEAVIATE_URL: http://weaviate:8080
+      SECRET_KEY: ${SECRET_KEY:-your-secret-key-change-in-production}
+      ALGORITHM: HS256
+      ACCESS_TOKEN_EXPIRE_MINUTES: 30
+    ports:
+      - "8000:8000"
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      weaviate:
+        condition: service_healthy
+    volumes:
+      - ./backend:/app
+      - /app/__pycache__
+    networks:
+      - learning_network
+    restart: unless-stopped
+
+  # Frontend UI
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: learning_platform_frontend
+    ports:
+      - "5173:80"
+    depends_on:
+      - backend
+    environment:
+      VITE_API_BASE_URL: http://localhost:8000/api
+    networks:
+      - learning_network
+    restart: unless-stopped
+
+  # Prometheus Metrics
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: learning_platform_prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/usr/share/prometheus/console_libraries'
+      - '--web.console.templates=/usr/share/prometheus/consoles'
+    networks:
+      - learning_network
+    restart: unless-stopped
+
+  # Grafana Dashboard
+  grafana:
+    image: grafana/grafana:latest
+    container_name: learning_platform_grafana
+    ports:
+      - "3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:-admin}
+      GF_INSTALL_PLUGINS: 'redis-datasource'
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning
+    depends_on:
+      - prometheus
+    networks:
+      - learning_network
+    restart: unless-stopped
+
+  # MySQL Exporter for Prometheus
+  mysql_exporter:
+    image: prom/mysqld-exporter:v0.14.0
+    container_name: learning_platform_mysql_exporter
+    ports:
+      - "9104:9104"
+    environment:
+      DATA_SOURCE_NAME: "${DB_USER:-learning_user}:${DB_PASSWORD:-learning_pass}@(mysql:3306)/"
+    depends_on:
+      - mysql
+    networks:
+      - learning_network
+    restart: unless-stopped
+
+networks:
+  learning_network:
+    driver: bridge
+
+volumes:
+  mysql_data:
+  redis_data:
+  weaviate_data:
+  prometheus_data:
+  grafana_data:
