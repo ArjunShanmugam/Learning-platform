@@ -1,6 +1,8 @@
+<<<<<<< HEAD
 # 🎓 Learning Platform - AI-Powered Course Recommendation System
 
-A comprehensive learning platform with advanced ML features, providing personalized course recommendations, semantic search, and explainability.
+Full-stack learning platform with FastAPI backend, React frontend,
+recommendation system, and authentication.
 
 ## ✨ Key Features
 
@@ -127,3 +129,6 @@ docker run -d \
 **Last Updated**: January 2024
 **Version**: 1.0.0
 **Maintained By**: [Your Team]
+=======
+# Learning-platform
+>>>>>>> cd589b2ae178c268577d6289dc5e482778f43b7f
